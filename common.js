@@ -85,7 +85,7 @@ export function token(len = 10) {
 export const fmtCode = t => t ? `${t.slice(0, 5)}-${t.slice(5)}` : "";
 export const parseCode = s => {
   s = String(s || "").trim();
-  const m = s.match(/[?&]i=([A-Za-z0-9-]+)/);
+  const m = s.match(/[?&][ir]=([A-Za-z0-9-]+)/);
   if (m) s = m[1];
   return s.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 };
@@ -169,3 +169,10 @@ export function footerHTML(cfg) {
 
 // تسمية القسم مع رمزه
 export const deptLabel = d => d ? `${d.name} (${d.code})` : "";
+
+// رمز شخصي ثابت للمشرف يُشتق من رابط القسم + الجوال + الفرع + القسم (يسمح بالعودة بنفس رقم الجوال)
+export async function personalToken(reg, phone, branchId, deptCode) {
+  const A = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`rr|${reg}|${phone}|${branchId}|${deptCode}`));
+  return [...new Uint8Array(buf)].slice(0, 10).map(x => A[x % A.length]).join("");
+}

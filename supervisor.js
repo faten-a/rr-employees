@@ -1,6 +1,6 @@
 import { backend, isDemo } from "./data.js";
 import { $, $$, esc, cleanText, cleanNum, normName, lev, validateEmployee, findDuplicates, parseCode, fmtCode,
-  uid, fmtDate, countdown, toast, modal, confirmBox, footerHTML, deptLabel, normPhone } from "./common.js";
+  uid, fmtDate, countdown, toast, modal, confirmBox, footerHTML, deptLabel, normPhone, personalToken, copyText } from "./common.js";
 
 const APP = window.APP_CONFIG || {};
 const app = $("#app");
@@ -16,6 +16,8 @@ if (isDemo) $("#demo-flag").classList.remove("hidden");
 (async function boot() {
   try { B = await backend(); CFG = await B.getConfig(); }
   catch (e) { console.error(e); return fatal("تعذّر الاتصال بالخادم. تأكد من اتصال الإنترنت ثم أعد تحميل الصفحة."); }
+  const reg = parseCode(new URLSearchParams(location.search).get("r") || "");
+  if (reg) return regFlow(reg);
   const fromUrl = parseCode(new URLSearchParams(location.search).get("i") || "");
   let saved = ""; try { saved = parseCode(localStorage.getItem("rr_last_token") || ""); } catch {}
   if (fromUrl) return enter(fromUrl, false);
@@ -38,16 +40,73 @@ function landing(err = "") {
       <input id="code" class="input ltr" placeholder="ABCDE-12345" autocomplete="off" autocapitalize="characters"></div>
     <div class="row end" style="margin-top:14px"><button id="go" class="btn primary">دخول</button></div>
   </div>`;
-  const go = async () => { const t = parseCode($("#code").value); if (t.length < 6) return toast("أدخل رمز الدعوة كاملًا", "err"); await enter(t); };
+  const go = async () => {
+    const raw = $("#code").value, t = parseCode(raw);
+    if (t.length < 6) return toast("أدخل رمز الدعوة كاملًا", "err");
+    if (/[?&]r=/.test(raw)) return regFlow(t);
+    await enter(t);
+  };
   $("#go").onclick = go;
   $("#code").addEventListener("keydown", e => { if (e.key === "Enter") go(); });
   $("#code").focus();
 }
 
-async function enter(t, silent = false) {
+// ---------------- الدخول برابط القسم (تسجيل ذاتي) ----------------
+async function regFlow(code) {
+  app.innerHTML = `<div class="spinner"></div>`;
+  let R = null;
+  try { R = await B.getReg(code); } catch (e) { console.error(e); }
+  if (!R || R.active === false) return landing(R ? "هذا الرابط موقوف. تواصل مع مديرة المشروع." : "رابط القسم غير صحيح. تأكد من نسخه كاملًا كما وصلك.");
+  const dl = CFG.deadlines || {};
+  app.innerHTML = `
+  <div class="hero"><img src="${IMG.emblem}" alt="">
+    <div><h1>أهلًا بك في منصة حصر بيانات الموظفين</h1>
+    <p>رمز الدعوة: <b class="ltr">${esc(fmtCode(code))}</b> · ${esc((CFG.departments.find(d => String(d.code) === String(R.deptCode)) || {}).name || "")}<br>اختر فرعك وقسمك واكتب اسمك ورقم جوالك للبدء. إذا كنت بدأت سابقًا، أدخل نفس رقم الجوال وستكمل من حيث توقفت.</p></div></div>
+  <div class="card">
+    <h2>بيانات الدخول</h2>
+    <div class="grid g2">
+      <div class="field"><label>الفرع <span class="req">*</span></label>
+        <select id="r-b" class="input"><option value="">اختر الفرع…</option>
+        ${CFG.branches.map(b => `<option value="${esc(b.id)}">${esc(b.region)} – ${esc(b.name)}</option>`).join("")}</select></div>
+      <div class="field"><label>القسم <span class="req">*</span></label>
+        <select id="r-d" class="input"><option value="">اختر القسم…</option>
+        ${CFG.departments.map(d => `<option value="${esc(d.code)}" ${String(d.code) === String(R.deptCode) ? "selected" : ""}>${esc(deptLabel(d))}</option>`).join("")}</select></div>
+      <div class="field"><label>الاسم الكامل <span class="req">*</span></label><input id="r-n" class="input" autocomplete="name"></div>
+      <div class="field"><label>رقم الجوال <span class="req">*</span></label><input id="r-p" class="input ltr" inputmode="tel" placeholder="05XXXXXXXX"><div class="hint">يُستخدم للعودة إلى نموذجك لاحقًا.</div></div>
+    </div>
+    <div class="row end" style="margin-top:16px"><button id="r-go" class="btn primary">ابدأ ←</button></div>
+  </div>`;
+  $("#r-go").onclick = async () => {
+    const branchId = $("#r-b").value, deptCode = $("#r-d").value, name = cleanText($("#r-n").value), phone = normPhone($("#r-p").value);
+    if (!branchId) return toast("اختر الفرع", "err");
+    if (!deptCode) return toast("اختر القسم", "err");
+    if (name.split(" ").length < 2) return toast("اكتب اسمك الكامل", "err");
+    if (!/^05\d{8}$/.test(phone)) return toast("رقم الجوال يجب أن يكون 10 أرقام ويبدأ بـ 05", "err");
+    $("#r-go").disabled = true;
+    try {
+      const t = await personalToken(code, phone, branchId, deptCode);
+      let inv = await B.getInvite(t), isNew = false;
+      if (!inv) {
+        inv = { token: t, name, phone, branchId, deptCode, active: true, selfReg: true, reg: code, createdAt: new Date().toISOString() };
+        await B.saveInvite(inv); isNew = true;
+      }
+      history.replaceState(null, "", `?i=${t}${isDemo && location.search.includes("demo") ? "&demo" : ""}`);
+      await enter(t, false, isNew ? 2 : 0);
+      if (isNew) {
+        const link = new URL(`?i=${t}`, location.href.split("?")[0]).href;
+        modal({ title: "تم إنشاء نموذجك الخاص", html: `<p>احتفظ برابطك الخاص للعودة مباشرة، أو افتح رابط القسم لاحقًا وأدخل نفس رقم الجوال.</p>
+          <p class="ltr" style="word-break:break-all;background:var(--gold-l);padding:8px 10px;border-radius:8px">${esc(link)}</p>`,
+          actions: [{ label: "نسخ الرابط", onClick: async () => { await copyText(link); return false; } }, { label: "متابعة", kind: "primary" }] });
+      }
+    } catch (e) { console.error(e); toast("تعذّر الدخول، تحقق من الإنترنت وأعد المحاولة", "err", 4000); $("#r-go").disabled = false; }
+  };
+}
+
+async function enter(t, silent = false, startStep = 0) {
   app.innerHTML = `<div class="spinner"></div>`;
   let inv;
   try { inv = await B.getInvite(t); } catch (e) { console.error(e); inv = null; }
+  if (!inv && !silent) { let r = null; try { r = await B.getReg(t); } catch {} if (r) return regFlow(t); }
   if (!inv) { try { localStorage.removeItem("rr_last_token"); } catch {} return landing(silent ? "" : "رمز الدعوة غير صحيح. تأكد من نسخه كاملًا كما وصلك."); }
   if (inv.active === false) return landing("هذه الدعوة موقوفة. تواصل مع مديرة المشروع.");
   INV = inv; TOKEN = t;
@@ -62,6 +121,7 @@ async function enter(t, silent = false) {
   if (SUB.status === "submitted") return renderSubmitted();
   // مستخدم عائد: يكمل من حيث توقف
   step = !SUB.branchId || !SUB.deptCode ? 1 : !SUB.updatedAt || !/^05\d{8}$/.test(SUB.supervisor?.phone || "") ? (SUB.updatedAt ? 2 : 1) : 3;
+  if (startStep) step = startStep;
   render();
 }
 

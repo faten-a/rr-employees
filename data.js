@@ -63,6 +63,10 @@ const demo = {
   async saveSub(t, s) { const m = lsGet("rr_subs", {}); m[t] = s; lsSet("rr_subs", m); },
   async listSubs() { return Object.values(lsGet("rr_subs", {})); },
   async deleteSub(t) { const m = lsGet("rr_subs", {}); delete m[t]; lsSet("rr_subs", m); },
+  async getReg(c) { return lsGet("rr_regs", {})[c] || null; },
+  async listRegs() { return Object.values(lsGet("rr_regs", {})); },
+  async saveRegs(list) { const m = lsGet("rr_regs", {}); list.forEach(r => m[r.code] = r); lsSet("rr_regs", m); },
+  async deleteReg(c) { const m = lsGet("rr_regs", {}); delete m[c]; lsSet("rr_regs", m); },
   onAuth(cb) { cb({ email: "demo@local", displayName: "وضع تجريبي" }); },
   async signIn() {}, async signOut() {},
   isAdminEmail() { return true; }
@@ -99,6 +103,16 @@ async function firebaseBackend() {
     async saveSub(t, s) { await fs.setDoc(D("subs", t), s); },
     async listSubs() { return all("subs"); },
     async deleteSub(t) { await fs.deleteDoc(D("subs", t)); },
+    async getReg(c) { const s = await fs.getDoc(D("regs", c)); return s.exists() ? s.data() : null; },
+    async listRegs() { return all("regs"); },
+    async saveRegs(list) {
+      for (let i = 0; i < list.length; i += 400) {
+        const b = fs.writeBatch(db);
+        list.slice(i, i + 400).forEach(r => b.set(D("regs", r.code), r));
+        await b.commit();
+      }
+    },
+    async deleteReg(c) { await fs.deleteDoc(D("regs", c)); },
     onAuth(cb) { au.onAuthStateChanged(auth, cb); },
     async signIn() { await au.signInWithPopup(auth, new au.GoogleAuthProvider()); },
     async signOut() { await au.signOut(auth); },

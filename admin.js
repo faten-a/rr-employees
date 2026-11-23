@@ -4,7 +4,7 @@ import { $, $$, esc, cleanText, cleanNum, normName, validateEmployee, token, fmt
 
 const APP = window.APP_CONFIG || {};
 const app = $("#app");
-let B, CFG, INVITES = [], SUBS = {}, TAB = "home";
+let B, CFG, INVITES = [], SUBS = {}, REGS = [], TAB = "home";
 const F = { sup: { q: "", branch: "", status: "" }, emp: { q: "", branch: "", dept: "", status: "", nat: "", sub: "", issues: false }, dec: { branch: "" } };
 let reportBranch = "";
 
@@ -20,6 +20,20 @@ const DEFAULT_TEMPLATE =
 آخر موعد للتعبئة: {الموعد}
 
 يمكنكم حفظ البيانات والعودة لإكمالها في أي وقت قبل الإرسال النهائي.
+شاكرين ومقدّرين تعاونكم،
+${APP.preparedBy || ""} – ${APP.preparedByTitle || ""}`;
+
+const REG_TEMPLATE =
+`السلام عليكم ورحمة الله وبركاته
+مشرف/ة {القسم} المحترم/ة
+
+ضمن مشروع تحديث بيانات الموظفين في ${APP.companyName || "الشركة"}، نأمل منكم التكرم بالدخول إلى الرابط التالي، واختيار الفرع والقسم، ثم تعبئة بياناتكم وبيانات جميع موظفي القسم وتوقيع الإقرار بصحتها:
+{الرابط}
+
+رمز الدعوة: {الرمز}
+(إن لم يفتح الرابط، ادخلوا على {الموقع} واكتبوا رمز الدعوة)
+
+يمكنكم حفظ البيانات والعودة لإكمالها لاحقًا بفتح نفس الرابط وإدخال نفس رقم الجوال.
 شاكرين ومقدّرين تعاونكم،
 ${APP.preparedBy || ""} – ${APP.preparedByTitle || ""}`;
 
@@ -54,8 +68,9 @@ function loginView(err = "", signedIn = false) {
 async function loadAll(msg = false) {
   app.innerHTML = `<div class="spinner"></div>`;
   try {
-    const [c, inv, subs] = await Promise.all([B.getConfig(), B.listInvites(), B.listSubs()]);
-    CFG = c; CFG.inviteTemplate = CFG.inviteTemplate || DEFAULT_TEMPLATE;
+    const [c, inv, subs, regs] = await Promise.all([B.getConfig(), B.listInvites(), B.listSubs(), B.listRegs()]);
+    REGS = regs;
+    CFG = c; CFG.inviteTemplate = CFG.inviteTemplate || DEFAULT_TEMPLATE; CFG.regTemplate = CFG.regTemplate || REG_TEMPLATE;
     INVITES = inv.sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
     SUBS = Object.fromEntries(subs.map(s => [s.token, s]));
     render(); if (msg) toast("تم تحديث البيانات");
@@ -116,14 +131,14 @@ function inviteMessage(inv) {
 async function markSent(inv) { if (!inv.sentAt) { inv.sentAt = new Date().toISOString(); try { await B.saveInvite(inv); } catch {} } }
 
 // ================= render =================
-const TABS = [["home", "الرئيسية"], ["sup", "المشرفون والدعوات"], ["emp", "الموظفون"], ["dup", "المكرر والتنبيهات"],
+const TABS = [["home", "الرئيسية"], ["reg", "دعوات الأقسام"], ["sup", "المشرفون والدعوات"], ["emp", "الموظفون"], ["dup", "المكرر والتنبيهات"],
   ["dec", "الإقرارات"], ["dl", "المواعيد"], ["rep", "تقارير الفروع"], ["set", "الإعدادات"]];
 function render() {
   const rows = allRows(), dups = companyDups(rows);
-  const counts = { sup: INVITES.length, emp: rows.length, dup: dups.length, dec: Object.values(SUBS).filter(s => s.status === "submitted").length };
+  const counts = { reg: REGS.length, sup: INVITES.length, emp: rows.length, dup: dups.length, dec: Object.values(SUBS).filter(s => s.status === "submitted").length };
   app.innerHTML = `<nav class="tabs">${TABS.map(([k, t]) => `<button data-t="${k}" class="${TAB === k ? "on" : ""}">${t}${counts[k] !== undefined ? `<span class="cnt">${counts[k]}</span>` : ""}</button>`).join("")}</nav><section id="tab"></section>`;
   $$(".tabs button").forEach(b => b.onclick = () => { TAB = b.dataset.t; render(); });
-  ({ home: tabHome, sup: tabSup, emp: tabEmp, dup: tabDup, dec: tabDec, dl: tabDl, rep: tabRep, set: tabSet })[TAB](rows, dups);
+  ({ home: tabHome, reg: tabReg, sup: tabSup, emp: tabEmp, dup: tabDup, dec: tabDec, dl: tabDl, rep: tabRep, set: tabSet })[TAB](rows, dups);
 }
 const T = () => $("#tab");
 
@@ -181,6 +196,67 @@ function tabHome(rows, dups) {
   $$("[data-rep]").forEach(b => b.onclick = () => { reportBranch = b.dataset.rep; TAB = "rep"; render(); });
 }
 
+// ---------------- روابط الأقسام ----------------
+function regLink(c) { const u = new URL("index.html", location.href); u.search = `?r=${c}`; return u.href; }
+function regMessage(r) { return (CFG.regTemplate || REG_TEMPLATE).replaceAll("{القسم}", dName(r.deptCode)).replaceAll("{الرابط}", regLink(r.code))
+  .replaceAll("{الرمز}", fmtCode(r.code)).replaceAll("{الموقع}", new URL("index.html", location.href).href); }
+function regModal(r) {
+  modal({ title: `دعوة ${dName(r.deptCode)}`, wide: true, html: `
+    <div class="grid g2"><div><b>القسم:</b> ${esc(deptLabel(dept(r.deptCode)))}</div><div><b>رمز الدعوة:</b> <span class="ltr" style="font-family:monospace;font-size:18px;font-weight:800">${fmtCode(r.code)}</span></div></div>
+    <h4 style="margin-top:14px">نص رسالة الدعوة</h4><div class="msg-preview">${esc(regMessage(r))}</div>`,
+    actions: [
+      { label: "إرسال واتساب", kind: "ok", onClick: async () => { window.open(`https://wa.me/?text=${encodeURIComponent(regMessage(r))}`, "_blank", "noopener"); if (!r.sentAt) { r.sentAt = new Date().toISOString(); try { await B.saveRegs([r]); } catch {} } setTimeout(tabReg, 300); } },
+      { label: "نسخ الرسالة", onClick: async () => { await copyText(regMessage(r)); if (!r.sentAt) { r.sentAt = new Date().toISOString(); try { await B.saveRegs([r]); } catch {} } return false; } },
+      { label: "نسخ الرمز", onClick: async () => { await copyText(fmtCode(r.code)); return false; } },
+      { label: "إغلاق", kind: "ghost" }] });
+}
+async function ensureRegs() {
+  const missing = CFG.departments.filter(d => !REGS.some(r => String(r.deptCode) === String(d.code)));
+  if (!missing.length) return 0;
+  const now = new Date().toISOString();
+  const add = missing.map(d => ({ code: token(10), deptCode: String(d.code), active: true, createdAt: now }));
+  await B.saveRegs(add); REGS.push(...add); return add.length;
+}
+function tabReg() {
+  const order = d => CFG.departments.findIndex(x => String(x.code) === String(d.deptCode));
+  const L = [...REGS].sort((a, b) => order(a) - order(b));
+  const missing = CFG.departments.filter(d => !REGS.some(r => String(r.deptCode) === String(d.code))).length;
+  T().innerHTML = `
+  <div class="banner info"><div>اختاري القسم واضغطي «رسالة الدعوة» لتظهر الرسالة بالرابط ورمز الدعوة جاهزة للإرسال. لكل قسم رابط واحد ترسلينه لمشرف القسم (أو لكل مشرفي القسم في جميع الفروع). المشرف يفتح الرابط، ويختار فرعه وقسمه، ويكتب اسمه وجواله، فيُنشأ له نموذج خاص به يظهر لك في «المشرفون والدعوات». وللعودة لاحقًا يفتح الرابط نفسه ويُدخل نفس رقم الجوال.</div></div>
+  <div class="card">
+    <div class="row between"><h2>دعوات الأقسام (${REGS.length})</h2>
+      <div class="row">${missing ? `<button id="mk" class="btn primary">+ إنشاء روابط لـ ${missing} قسم</button>` : ""}<button id="x-reg" class="btn sm">⬇ تصدير الروابط إلى إكسل</button></div></div>
+    ${!L.length ? `<div class="empty"><b>لا توجد روابط بعد</b>اضغطي «إنشاء روابط» لإنشاء رابط لكل قسم دفعة واحدة.</div>` : `
+    <div class="filters"><input id="rq" class="input" placeholder="ابحثي عن قسم…" style="min-width:240px"></div>
+    <div class="tbl-wrap"><table class="tbl" id="reg-tbl"><thead><tr><th>القسم</th><th class="num">رقم القسم</th><th>رمز الدعوة</th><th class="num">سجّلوا</th><th class="num">أرسلوا</th><th>الحالة</th><th>إرسال</th><th></th></tr></thead><tbody>
+    ${L.map(r => { const inv = INVITES.filter(i => i.reg === r.code), done = inv.filter(i => supStatus(i).k === "done").length; return `<tr data-c="${r.code}">
+      <td><a href="#" data-open style="font-weight:800;text-decoration:none">${esc(dName(r.deptCode))}</a></td><td class="num">${esc(r.deptCode)}</td>
+      <td class="ltr nowrap" style="font-family:monospace;font-weight:700">${fmtCode(r.code)}</td><td class="num">${inv.length}</td><td class="num">${done}</td>
+      <td>${r.active === false ? '<span class="badge b-muted">موقوف</span>' : r.sentAt ? '<span class="badge b-ok">أُرسل ✓</span>' : '<span class="badge b-warn">لم يُرسل</span>'}</td>
+      <td><div class="row" style="flex-wrap:nowrap;gap:4px"><button class="btn sm primary" data-open>رسالة الدعوة</button><a class="btn sm wa" data-wa target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(regMessage(r))}">واتساب</a>
+        <button class="btn sm" data-msg>نسخ الرسالة</button><button class="btn sm" data-link>نسخ الرابط</button></div></td>
+      <td><button class="btn sm ghost" data-tog>${r.active === false ? "تفعيل" : "إيقاف"}</button></td></tr>`; }).join("")}
+    </tbody></table></div>
+    <p class="hint">زر «واتساب» يفتح الواتساب لتختاري المشرف والرسالة جاهزة بالرابط. يمكن إرسال رابط القسم نفسه لأكثر من مشرف، وكل مشرف يحصل على نموذجه الخاص حسب فرعه ورقم جواله.</p>`}
+  </div>
+  <div class="card"><h2>نص رسالة رابط القسم</h2><p class="sub">المتغيرات: {القسم} {الرابط} {الرمز} {الموقع}</p>
+    <textarea id="rt" class="input" style="min-height:220px">${esc(CFG.regTemplate)}</textarea>
+    <div class="row between" style="margin-top:8px"><button id="rt-reset" class="btn sm ghost">استعادة النص الافتراضي</button><button id="rt-save" class="btn sm primary">حفظ النص</button></div></div>`;
+  const reg = el => REGS.find(r => r.code === el.closest("tr").dataset.c);
+  const mark = async r => { if (!r.sentAt) { r.sentAt = new Date().toISOString(); try { await B.saveRegs([r]); } catch {} } };
+  $("#mk") && ($("#mk").onclick = async () => { $("#mk").disabled = true; const n = await ensureRegs(); toast(`تم إنشاء ${n} رابط`); render(); });
+  $$("[data-wa]").forEach(a => a.onclick = () => { const r = reg(a); mark(r).then(() => setTimeout(tabReg, 600)); });
+  $$("[data-msg]").forEach(b => b.onclick = async () => { const r = reg(b); await copyText(regMessage(r)); await mark(r); tabReg(); });
+  $$("[data-link]").forEach(b => b.onclick = () => copyText(regLink(reg(b).code)));
+  $$("[data-open]").forEach(b => b.onclick = e => { e.preventDefault(); regModal(reg(b)); });
+  $("#rq") && ($("#rq").oninput = e => { const q = normName(e.target.value); $$("#reg-tbl tbody tr").forEach(tr => tr.style.display = !q || normName($("td", tr).textContent).includes(q) ? "" : "none"); });
+  $$("[data-tog]").forEach(b => b.onclick = async () => { const r = reg(b); r.active = r.active === false; await B.saveRegs([r]); toast(r.active ? "تم التفعيل" : "تم إيقاف الرابط"); tabReg(); });
+  $("#rt-reset").onclick = () => $("#rt").value = REG_TEMPLATE;
+  $("#rt-save").onclick = async () => { CFG.regTemplate = $("#rt").value; await B.saveConfig(CFG); toast("تم حفظ النص"); };
+  $("#x-reg").onclick = () => exportSheets([{ name: "روابط الأقسام", rows: L.map(r => ({ "القسم": dName(r.deptCode), "رمز القسم": r.deptCode, "رابط القسم": regLink(r.code),
+    "عدد المسجلين": INVITES.filter(i => i.reg === r.code).length, "أُرسل": r.sentAt ? "نعم" : "لا", "الحالة": r.active === false ? "موقوف" : "فعال" })) }], "روابط_الأقسام");
+}
+
 // ---------------- المشرفون ----------------
 function tabSup() {
   const f = F.sup;
@@ -210,7 +286,7 @@ function tabSup() {
     $("#sup-list").innerHTML = !L.length ? `<div class="empty"><b>لا يوجد مشرفون</b>أضف المشرفين من النموذج أعلاه أو استورد قائمتهم.</div>` :
       `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>المشرف</th><th>الجوال</th><th>الفرع</th><th>القسم</th><th>الرمز</th><th>الحالة</th><th class="num">الموظفون</th><th>آخر تحديث</th><th>الدعوة</th><th></th></tr></thead><tbody>
       ${L.map(i => { const s = supStatus(i), sub = SUBS[i.token]; return `<tr data-t="${i.token}">
-        <td><b>${esc(i.name)}</b></td><td class="ltr">${esc(i.phone)}</td><td>${esc(bName(i.branchId))}</td><td>${esc(dName(i.deptCode))} <span class="hint">(${esc(i.deptCode)})</span></td>
+        <td><b>${esc(i.name)}</b>${i.selfReg ? ' <span class="badge b-gold" title="سجّل بنفسه عبر رابط القسم">رابط القسم</span>' : ""}</td><td class="ltr">${esc(i.phone)}</td><td>${esc(bName(i.branchId))}</td><td>${esc(dName(i.deptCode))} <span class="hint">(${esc(i.deptCode)})</span></td>
         <td class="ltr nowrap" style="font-family:monospace">${fmtCode(i.token)}</td><td><span class="badge ${s.c}">${s.t}</span></td>
         <td class="num">${sub?.employees?.length ?? 0}</td><td>${sub?.updatedAt ? esc(fmtDate(sub.updatedAt)) : "—"}</td>
         <td><div class="row" style="flex-wrap:nowrap;gap:4px">
