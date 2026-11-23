@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>حصر بيانات الموظفين | شركة محمد رشيد الرشيد للتجارة</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#B8913A">
+
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
+<script src="images.js"></script>
+</head>
+<body>
+<div id="demo-flag" class="demo-flag hidden">وضع تجريبي – البيانات محفوظة في هذا المتصفح فقط</div>
+<header class="topbar"><div class="in">
+  <div class="brand"><img data-img="emblem" alt="">
+    <div><div class="t1">شركة محمد رشيد الرشيد للتجارة</div><div class="t2">منصة حصر وتحديث بيانات الموظفين</div></div></div>
+  <div class="sp"></div>
+  <div id="save-state" class="save-state hidden"><span class="dot"></span><span class="txt"></span></div>
+</div></header>
+
+<main id="app" class="wrap narrow"><div class="spinner"></div></main>
+<div id="foot"></div>
+<div id="print-area"></div>
+<script>document.querySelectorAll("[data-img]").forEach(i=>i.src=IMG[i.dataset.img]);(()=>{const l=document.createElement("link");l.rel="icon";l.href=IMG.emblem;document.head.appendChild(l)})()</script>
+<script type="module" src="supervisor.js"></script>
+</body>
+</html>

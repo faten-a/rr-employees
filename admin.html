@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>لوحة التحكم | حصر بيانات الموظفين</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#B8913A">
+
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
+<script src="images.js"></script>
+</head>
+<body>
+<div id="demo-flag" class="demo-flag hidden">وضع تجريبي – البيانات محفوظة في هذا المتصفح فقط</div>
+<header class="topbar"><div class="in">
+  <div class="brand"><img data-img="emblem" alt="">
+    <div><div class="t1">لوحة تحكم حصر الموظفين</div><div class="t2">شركة محمد رشيد الرشيد للتجارة</div></div></div>
+  <div class="sp"></div>
+  <div id="user-box" class="row hidden"><span id="user-mail" class="hint" style="margin:0"></span>
+    <button id="reload" class="btn sm" title="تحديث البيانات">⟳ تحديث</button><button id="logout" class="btn sm ghost">خروج</button></div>
+</div></header>
+<main id="app" class="wrap"><div class="spinner"></div></main>
+<div id="foot"></div>
+<div id="print-area"></div>
+<script>document.querySelectorAll("[data-img]").forEach(i=>i.src=IMG[i.dataset.img]);(()=>{const l=document.createElement("link");l.rel="icon";l.href=IMG.emblem;document.head.appendChild(l)})()</script>
+<script type="module" src="admin.js"></script>
+</body>
+</html>
